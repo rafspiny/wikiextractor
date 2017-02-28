@@ -199,6 +199,10 @@ options = SimpleNamespace(
         'ref', 'references', 'img', 'imagemap', 'source', 'small',
         'sub', 'sup', 'indicator'
     ],
+
+    ##
+    # set of ids to process
+    filtering_ids=None,
 )
 
 ##
@@ -2856,7 +2860,7 @@ def process_dump(input_file, template_file, out_file, file_size, file_compress,
     workers = []
     for i in range(worker_count):
         extractor = Process(target=extract_process,
-                            args=(options, i, jobs_queue, output_queue))
+                            args=(options, i, jobs_queue, output_queue, options.filtering_ids))
         extractor.daemon = True  # only live while parent process lives
         extractor.start()
         workers.append(extractor)
@@ -2904,11 +2908,12 @@ def process_dump(input_file, template_file, out_file, file_size, file_compress,
 # Multiprocess support
 
 
-def extract_process(opts, i, jobs_queue, output_queue):
+def extract_process(opts, i, jobs_queue, output_queue, filtering_ids):
     """Pull tuples of raw page content, do CPU/regex-heavy fixup, push finished text
     :param i: process id.
     :param jobs_queue: where to get jobs.
     :param output_queue: where to queue extracted text for output.
+    :param filtering_ids: set of filtering ids to preserve
     """
 
     global options
@@ -2917,21 +2922,27 @@ def extract_process(opts, i, jobs_queue, output_queue):
     createLogger(options.quiet, options.debug)
 
     out = StringIO()                 # memory buffer
-    
+    skipped_counter = 0
     
     while True:
         job = jobs_queue.get()  # job is (id, title, page, page_num)
         if job:
             id, revid, title, page, page_num = job
-            try:
-                e = Extractor(*job[:4]) # (id, revid, title, page)
-                page = None              # free memory
-                e.extract(out)
-                text = out.getvalue()
-            except:
-                text = ''
-                logging.exception('Processing page: %s %s', id, title)
-
+            text = ''
+            if filtering_ids is None or id in filtering_ids:
+                try:
+                    e = Extractor(*job[:4]) # (id, revid, title, page)
+                    page = None              # free memory
+                    e.extract(out)
+                    text = out.getvalue()
+                except:
+                    text = ''
+                    logging.exception('Processing page: %s %s', id, title)
+            else:
+                skipped_counter += 1
+                if skipped_counter % 1000 == 0:
+                    skipped_counter = 0
+                logging.info('Skipping 1000 ids')
             output_queue.put((page_num, text))
             out.truncate(0)
             out.seek(0)
@@ -3050,6 +3061,8 @@ def main():
                         help="comma separated list of elements that will be removed from the article text")
     groupP.add_argument("--keep_tables", action="store_true", default=options.keep_tables,
                         help="Preserve tables in the output article text (default=%(default)s)")
+    groupP.add_argument("--filter-ids", default=None, type=str, dest='ids_filter', metavar='filename',
+                        help = "process only doc with ids contained in the specified file, one per line")
     default_process_count = max(1, cpu_count() - 1)
     parser.add_argument("--processes", type=int, default=default_process_count,
                         help="Number of processes to use (default %(default)s)")
@@ -3080,6 +3093,16 @@ def main():
     options.expand_templates = args.no_templates
     options.filter_disambig_pages = args.filter_disambig_pages
     options.keep_tables = args.keep_tables
+
+    # Filtering IDs
+    if args.ids_filter is not None:
+        filtering_filename = args.ids_filter
+        if not os.path.exists(filtering_filename):
+            logging.error('Filtering file not found: %s', filtering_filename)
+            return
+        with open(filtering_filename) as f:
+            ids = f.read().splitlines()
+            options.filtering_ids = set(ids)
 
     try:
         power = 'kmg'.find(args.bytes[-1].lower()) + 1
