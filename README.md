@@ -35,6 +35,7 @@ Each file will contains several documents in this [document format](http://media
 
     usage: WikiExtractor.py [-h] [-o OUTPUT] [-b n[KMG]] [-c] [--html] [-l] [-s]
                             [--lists] [-ns ns1,ns2] [-xns ns1,ns2]
+                            [--filter-ids FILENAME] 
                             [--templates TEMPLATES] [--no-templates]
                             [-r] [--min_text_length MIN_TEXT_LENGTH]
                             [--filter_disambig_pages] [--processes PROCESSES] [-q]
@@ -93,6 +94,8 @@ Each file will contains several documents in this [document format](http://media
                             comma separated list of elements that will be removed from the article text
       --keep_tables
                             Preserve tables in the output article text (default=False)
+      --filter-ids filename
+                            process only doc with ids contained in the specified file, one per line
 
     Special:
       -q, --quiet           suppress reporting progress info
@@ -108,4 +111,5 @@ assuming template definitions have not changed.
 Option --no-templates significantly speeds up the extractor, avoiding the cost
 of expanding [MediaWiki templates](https://www.mediawiki.org/wiki/Help:Templates).
 
+Option --filter-ids force the script to process only those articles for which the id is listed in the specified file. The file format is simple: an id per each line.
 For further information, visit [the documentation](http://attardi.github.io/wikiextractor).
